@@ -80,14 +80,9 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
 
         result = await check_ivy(candidate, ivy_check_cmd=config.ivy_check_command, timeout=config.ivy_check_timeout)
 
-        attempts.append(AttemptRecord(
-            attempt=attempt_num,
-            passed=result.passed,
-            ivy_output=result.raw_output,
-            llm_solution=candidate,
-        ))
-
         if result.passed:
+            messages.append({"role": "assistant", "content": raw_reply})
+            attempts.append(AttemptRecord(attempt=attempt_num, passed=True, ivy_output=result.raw_output, llm_solution=candidate))
             log.info("  [%s] PASSED on attempt %d", problem.name, attempt_num)
             return ProblemResult(
                 problem_name=problem.name,
@@ -98,9 +93,11 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
                 attempts=attempts,
             )
 
-        log.info("  [%s] attempt %d FAILED: %s", problem.name, attempt_num, result.feedback[:200])
+        reason = "timed out" if result.timed_out else "ivy_check failed"
+        log.info("  [%s] attempt %d: %s", problem.name, attempt_num, reason)
         messages.append({"role": "assistant", "content": raw_reply})
         messages.append({"role": "user", "content": RETRY_PROMPT_TEMPLATE.format(error_output=result.feedback)})
+        attempts.append(AttemptRecord(attempt=attempt_num, passed=False, ivy_output=result.raw_output, llm_solution=candidate))
 
     log.info("  [%s] FAILED after %d attempts", problem.name, config.max_attempts)
     return ProblemResult(
