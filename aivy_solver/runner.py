@@ -1,4 +1,5 @@
 import logging
+import re
 
 from aivy_solver.config import Config
 from aivy_solver.ivy_checker import check_ivy
@@ -16,19 +17,36 @@ from aivy_solver.results import AttemptRecord, ProblemResult, RunResult
 log = logging.getLogger(__name__)
 
 
+def _normalize(line: str) -> str:
+    return re.sub(r"\s+", " ", line.strip())
+
+
 def _check_no_cheating(original: str, candidate: str) -> bool:
-    return _non_invariant_lines(original) != _non_invariant_lines(candidate)
+    orig_lines = [
+        _normalize(l) for l in original.splitlines()
+        if l.strip() and not l.strip().startswith("invariant")
+    ]
+    cand_lines = [
+        _normalize(l) for l in candidate.splitlines()
+        if l.strip() and not l.strip().startswith("invariant")
+    ]
 
+    if orig_lines == cand_lines:
+        return False
 
-def _non_invariant_lines(program: str) -> list[str]:
-    lines = []
-    for line in program.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("invariant") and not stripped.startswith("invariant [safety]"):
-            continue
-        if stripped:
-            lines.append(stripped)
-    return lines
+    orig_idx = 0
+    for cand_line in cand_lines:
+        if orig_idx < len(orig_lines) and cand_line == orig_lines[orig_idx]:
+            orig_idx += 1
+    if orig_idx == len(orig_lines):
+        return False
+
+    for i, (o, c) in enumerate(zip(orig_lines, cand_lines)):
+        if o != c:
+            log.debug("  first diff at non-invariant line %d:\n    orig: %s\n    cand: %s", i, o, c)
+            break
+
+    return True
 
 
 async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
@@ -80,7 +98,7 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
                 attempts=attempts,
             )
 
-        log.info("  [%s] attempt %d FAILED: %s", problem.name, attempt_num, result.feedback[:120])
+        log.info("  [%s] attempt %d FAILED: %s", problem.name, attempt_num, result.feedback[:200])
         messages.append({"role": "assistant", "content": raw_reply})
         messages.append({"role": "user", "content": RETRY_PROMPT_TEMPLATE.format(error_output=result.feedback)})
 
