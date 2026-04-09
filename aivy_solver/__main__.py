@@ -4,6 +4,7 @@ import logging
 import sys
 from pathlib import Path
 
+import litellm
 from dotenv import load_dotenv
 
 from aivy_solver.config import Config
@@ -15,9 +16,10 @@ def _setup_logging(verbose: bool) -> None:
     logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
         datefmt="%H:%M:%S",
-        level=logging.DEBUG if verbose else logging.INFO,
+        level=logging.WARNING,
         stream=sys.stderr,
     )
+    logging.getLogger("aivy_solver").setLevel(logging.DEBUG if verbose else logging.INFO)
 
 
 def _is_single_problem(path: Path) -> bool:
@@ -45,6 +47,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     load_dotenv()
+    litellm.suppress_debug_info = True
 
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
@@ -64,27 +67,30 @@ def main() -> None:
     )
 
     if _is_single_problem(target):
-        problem = Problem.load(target)
-        result = asyncio.run(solve_problem(problem, config))
-        if result.success:
-            print(f"\nPASSED on attempt {result.success_on_attempt}")
-            winning = result.attempts[result.success_on_attempt - 1]
-            print("\n--- Winning solution ---")
-            print(winning.llm_solution)
-        else:
-            print(f"\nFAILED after {result.total_attempts} attempts")
-            if result.attempts:
-                print(f"\nLast ivy_check output:\n{result.attempts[-1].ivy_output}")
+        problems = [Problem.load(target)]
     else:
         problems = Problem.load_all(target)
-        if not problems:
-            print(f"Error: no problems found in {target}")
-            sys.exit(1)
 
-        run_result = asyncio.run(run_benchmark(problems, config))
-        out_path = run_result.save(config.results_dir)
-        n_passed = sum(1 for p in run_result.problems if p.success)
-        print(f"\nResults saved to {out_path}")
+    if not problems:
+        print(f"Error: no problems found in {target}")
+        sys.exit(1)
+
+    run_result = asyncio.run(run_benchmark(problems, config))
+    out_path = run_result.save(config.results_dir)
+
+    for pr in run_result.problems:
+        if pr.success:
+            winning = pr.attempts[pr.success_on_attempt - 1]
+            print(f"\n[{pr.problem_name}] PASSED on attempt {pr.success_on_attempt}")
+            print(winning.llm_solution)
+        else:
+            print(f"\n[{pr.problem_name}] FAILED after {pr.total_attempts} attempts")
+            if pr.attempts:
+                print(pr.attempts[-1].ivy_output)
+
+    n_passed = sum(1 for p in run_result.problems if p.success)
+    print(f"\nResults saved to {out_path}")
+    if len(run_result.problems) > 1:
         print(f"Success rate: {run_result.success_rate:.0%} ({n_passed}/{len(run_result.problems)})")
 
 
