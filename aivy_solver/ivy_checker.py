@@ -50,7 +50,7 @@ async def check_ivy(
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            ivy_check_cmd, str(tmp_path),
+            ivy_check_cmd, "trace=true", str(tmp_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -59,7 +59,7 @@ async def check_ivy(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            return CheckResult(passed=False, raw_output="", timed_out=True)
+            return CheckResult(passed=False, raw_output=f"ivy_check timed out after {timeout}s", timed_out=True)
 
         stdout = stdout_bytes.decode(errors="replace")
         stderr = stderr_bytes.decode(errors="replace")
