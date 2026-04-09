@@ -80,13 +80,9 @@ def main() -> None:
 
     for pr in run_result.problems:
         if pr.success:
-            winning = pr.attempts[pr.success_on_attempt - 1]
             print(f"\n[{pr.problem_name}] PASSED on attempt {pr.success_on_attempt}")
-            print(winning.llm_solution)
         else:
             print(f"\n[{pr.problem_name}] FAILED after {pr.total_attempts} attempts")
-            if pr.attempts:
-                print(pr.attempts[-1].ivy_output)
 
     n_passed = sum(1 for p in run_result.problems if p.success)
     print(f"\nResults saved to {out_path}")
