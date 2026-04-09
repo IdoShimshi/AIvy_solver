@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aivy-solver"
+version = "0.1.0"
+description = "LLM-based invariant synthesis for Ivy protocol verification"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm",
+    "python-dotenv",
+]
+
+[tool.setuptools.packages.find]
+include = ["aivy_solver*"]
