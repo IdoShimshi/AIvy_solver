@@ -29,9 +29,12 @@ python -m aivy_solver benchmarks/
 
 # Solve a single problem
 python -m aivy_solver benchmarks/toy_consensus
+
+# Use a different model
+python -m aivy_solver --model anthropic/claude-sonnet-4-20250514 benchmarks/toy_consensus
 ```
 
-The model, max attempts, and other settings are in `aivy_solver/config.py`.
+Run `python -m aivy_solver --help` to see all available options.
 
 ## How It Works
 
