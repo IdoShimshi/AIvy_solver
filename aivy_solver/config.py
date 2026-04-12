@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,4 +11,6 @@ class Config:
     max_attempts: int = 5
     temperature: float = 0.3
     ivy_check_timeout: int = 30
-    ivy_check_command: str = "/home/ido/code/msc/intro_to_verification/ivy/venv/bin/ivy_check"
+    ivy_check_command: str = field(
+        default_factory=lambda: os.environ.get("IVY_CHECK_COMMAND", "ivy_check")
+    )

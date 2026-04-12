@@ -26,8 +26,7 @@ def _is_single_problem(path: Path) -> bool:
     return (path / "stripped.ivy").exists()
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    defaults = Config()
+def _build_parser(defaults: Config) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="AIvy — LLM-based invariant synthesis for Ivy verification.",
     )
@@ -49,7 +48,7 @@ def main() -> None:
     load_dotenv()
     litellm.suppress_debug_info = True
 
-    args = _build_parser().parse_args()
+    args = _build_parser(Config()).parse_args()
     _setup_logging(args.verbose)
 
     target = Path(args.path)
