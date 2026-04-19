@@ -52,12 +52,30 @@ def _check_no_cheating(original: str, candidate: str) -> bool:
 async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
     log.info("Solving %s with %s (max %d attempts)", problem.name, config.model, config.max_attempts)
 
+    attempts: list[AttemptRecord] = []
+
+    log.info("  [%s] running ivy_check on stripped program", problem.name)
+    baseline = await check_ivy(problem.stripped, ivy_check_cmd=config.ivy_check_command, timeout=config.ivy_check_timeout)
+
+    if baseline.passed:
+        log.info("  [%s] stripped program already verifies — PASSED on attempt 0", problem.name)
+        attempts.append(AttemptRecord(attempt=0, passed=True, ivy_output=baseline.raw_output, llm_solution=problem.stripped))
+        return ProblemResult(
+            problem_name=problem.name,
+            model=config.model,
+            success=True,
+            success_on_attempt=0,
+            total_attempts=0,
+            attempts=attempts,
+        )
+
     messages: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": USER_PROMPT_TEMPLATE.format(stripped_program=problem.stripped)},
+        {"role": "user", "content": USER_PROMPT_TEMPLATE.format(
+            stripped_program=problem.stripped,
+            ivy_output=baseline.raw_output,
+        )},
     ]
-
-    attempts: list[AttemptRecord] = []
 
     for attempt_num in range(1, config.max_attempts + 1):
         log.info("  [%s] attempt %d/%d", problem.name, attempt_num, config.max_attempts)

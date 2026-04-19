@@ -234,7 +234,13 @@ Respond with ONLY the complete Ivy program — all original lines unchanged, \
 plus your new invariants at the end. No explanations.
 
 Program:
-{stripped_program}"""
+{stripped_program}
+
+Below is the current ivy_check output for this program. Use it to understand \
+which action breaks the safety property and what counterexample state leads \
+to the violation:
+
+{ivy_output}"""
 
 RETRY_PROMPT_TEMPLATE = """\
 Your previous solution did not pass ivy_check. Here is the full output:
