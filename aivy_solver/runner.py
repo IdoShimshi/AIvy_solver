@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 
@@ -129,12 +130,27 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
 
 
 async def run_benchmark(problems: list[Problem], config: Config) -> RunResult:
-    log.info("Loaded %d problem(s), model=%s, max_attempts=%d", len(problems), config.model, config.max_attempts)
+    concurrency = max(1, min(config.concurrency, len(problems))) if problems else 1
+    log.info(
+        "Loaded %d problem(s), model=%s, max_attempts=%d, concurrency=%d",
+        len(problems), config.model, config.max_attempts, concurrency,
+    )
 
     run = RunResult(model=config.model)
-    for problem in problems:
-        result = await solve_problem(problem, config)
-        run.problems.append(result)
+
+    if concurrency == 1:
+        for problem in problems:
+            result = await solve_problem(problem, config)
+            run.problems.append(result)
+    else:
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _bounded_solve(problem: Problem) -> ProblemResult:
+            async with semaphore:
+                return await solve_problem(problem, config)
+
+        results = await asyncio.gather(*(_bounded_solve(p) for p in problems))
+        run.problems.extend(results)
 
     log.info(
         "Run complete: %d/%d passed (%.0f%%)",

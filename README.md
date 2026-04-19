@@ -53,6 +53,9 @@ python -m aivy_solver benchmarks/
 
 # Specify a model
 python -m aivy_solver --model openai/gpt-4o benchmarks/toy_consensus
+
+# Run multiple problems in parallel (e.g. 4 at a time)
+python -m aivy_solver -j 4 benchmarks/
 ```
 
 Run `python -m aivy_solver --help` for all options (model, max attempts, temperature, timeout, etc.).

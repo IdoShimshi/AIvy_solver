@@ -40,6 +40,7 @@ def _build_parser(defaults: Config) -> argparse.ArgumentParser:
     p.add_argument("--results-dir", default=str(defaults.results_dir), help=f"Directory to save results (default: {defaults.results_dir})")
     p.add_argument("--ivy-check-command", default=defaults.ivy_check_command, help=f"Path to ivy_check binary (default: {defaults.ivy_check_command})")
     p.add_argument("--ivy-check-timeout", type=int, default=defaults.ivy_check_timeout, help=f"Timeout in seconds for ivy_check (default: {defaults.ivy_check_timeout})")
+    p.add_argument("-j", "--concurrency", type=int, default=defaults.concurrency, help=f"Number of problems to solve in parallel (default: {defaults.concurrency})")
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     return p
 
@@ -63,6 +64,7 @@ def main() -> None:
         results_dir=Path(args.results_dir),
         ivy_check_command=args.ivy_check_command,
         ivy_check_timeout=args.ivy_check_timeout,
+        concurrency=args.concurrency,
     )
 
     if _is_single_problem(target):
