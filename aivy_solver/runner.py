@@ -2,6 +2,8 @@ import asyncio
 import logging
 import re
 
+from tqdm import tqdm
+
 from aivy_solver.config import Config
 from aivy_solver.ivy_checker import check_ivy
 from aivy_solver.llm_client import llm_complete, extract_ivy_code
@@ -138,6 +140,13 @@ async def run_benchmark(problems: list[Problem], config: Config) -> RunResult:
 
     run = RunResult(model=config.model)
 
+    aivy_logger = logging.getLogger("aivy_solver")
+    use_progress_bar = (
+        len(problems) > 1
+        and concurrency > 1
+        and aivy_logger.getEffectiveLevel() > logging.DEBUG
+    )
+
     if concurrency == 1:
         for problem in problems:
             result = await solve_problem(problem, config)
@@ -149,8 +158,11 @@ async def run_benchmark(problems: list[Problem], config: Config) -> RunResult:
             async with semaphore:
                 return await solve_problem(problem, config)
 
-        results = await asyncio.gather(*(_bounded_solve(p) for p in problems))
-        run.problems.extend(results)
+        if use_progress_bar:
+            run.problems.extend(await _gather_with_progress(problems, _bounded_solve, aivy_logger))
+        else:
+            results = await asyncio.gather(*(_bounded_solve(p) for p in problems))
+            run.problems.extend(results)
 
     log.info(
         "Run complete: %d/%d passed (%.0f%%)",
@@ -159,3 +171,38 @@ async def run_benchmark(problems: list[Problem], config: Config) -> RunResult:
         run.success_rate * 100,
     )
     return run
+
+
+async def _gather_with_progress(
+    problems: list[Problem],
+    bounded_solve,
+    aivy_logger: logging.Logger,
+) -> list[ProblemResult]:
+    bar = tqdm(total=len(problems), desc="solving", unit="prob")
+    passed = 0
+    failed = 0
+
+    def _on_done(task: asyncio.Task) -> None:
+        nonlocal passed, failed
+        if task.cancelled() or task.exception() is not None:
+            failed += 1
+        else:
+            result = task.result()
+            if result.success:
+                passed += 1
+            else:
+                failed += 1
+        bar.update(1)
+        bar.set_postfix(passed=passed, failed=failed)
+
+    tasks = [asyncio.create_task(bounded_solve(p)) for p in problems]
+    for t in tasks:
+        t.add_done_callback(_on_done)
+
+    prev_level = aivy_logger.level
+    aivy_logger.setLevel(logging.WARNING)
+    try:
+        return await asyncio.gather(*tasks)
+    finally:
+        aivy_logger.setLevel(prev_level)
+        bar.close()
