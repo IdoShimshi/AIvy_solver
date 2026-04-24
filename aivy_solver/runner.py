@@ -62,7 +62,10 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
 
     if baseline.passed:
         log.info("  [%s] stripped program already verifies — PASSED on attempt 0", problem.name)
-        attempts.append(AttemptRecord(attempt=0, passed=True, ivy_output=baseline.raw_output, llm_solution=problem.stripped))
+        attempts.append(AttemptRecord(
+            attempt=0, passed=True,
+            ivy_output=baseline.raw_output, llm_solution=problem.stripped,
+        ))
         return ProblemResult(
             problem_name=problem.name,
             model=config.model,
@@ -83,19 +86,28 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
     for attempt_num in range(1, config.max_attempts + 1):
         log.info("  [%s] attempt %d/%d", problem.name, attempt_num, config.max_attempts)
 
-        raw_reply = await llm_complete(messages, config)
+        reply = await llm_complete(messages, config)
+        raw_reply = reply.content
         candidate = extract_ivy_code(raw_reply)
 
         if not candidate or not candidate.strip():
             messages.append({"role": "assistant", "content": raw_reply})
             messages.append({"role": "user", "content": EMPTY_RESPONSE_FEEDBACK})
-            attempts.append(AttemptRecord(attempt=attempt_num, passed=False, ivy_output="empty response", llm_solution=""))
+            attempts.append(AttemptRecord(
+                attempt=attempt_num, passed=False,
+                ivy_output="empty response", llm_solution="",
+                reasoning=reply.reasoning, usage=reply.usage,
+            ))
             continue
 
         if _check_no_cheating(problem.stripped, candidate):
             messages.append({"role": "assistant", "content": raw_reply})
             messages.append({"role": "user", "content": MODIFIED_LINES_FEEDBACK})
-            attempts.append(AttemptRecord(attempt=attempt_num, passed=False, ivy_output=MODIFIED_LINES_FEEDBACK, llm_solution=candidate))
+            attempts.append(AttemptRecord(
+                attempt=attempt_num, passed=False,
+                ivy_output=MODIFIED_LINES_FEEDBACK, llm_solution=candidate,
+                reasoning=reply.reasoning, usage=reply.usage,
+            ))
             log.info("  [%s] attempt %d: modified existing lines", problem.name, attempt_num)
             continue
 
@@ -103,7 +115,11 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
 
         if result.passed:
             messages.append({"role": "assistant", "content": raw_reply})
-            attempts.append(AttemptRecord(attempt=attempt_num, passed=True, ivy_output=result.raw_output, llm_solution=candidate))
+            attempts.append(AttemptRecord(
+                attempt=attempt_num, passed=True,
+                ivy_output=result.raw_output, llm_solution=candidate,
+                reasoning=reply.reasoning, usage=reply.usage,
+            ))
             log.info("  [%s] PASSED on attempt %d", problem.name, attempt_num)
             return ProblemResult(
                 problem_name=problem.name,
@@ -118,7 +134,11 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
         log.info("  [%s] attempt %d: %s", problem.name, attempt_num, reason)
         messages.append({"role": "assistant", "content": raw_reply})
         messages.append({"role": "user", "content": RETRY_PROMPT_TEMPLATE.format(error_output=result.feedback)})
-        attempts.append(AttemptRecord(attempt=attempt_num, passed=False, ivy_output=result.raw_output, llm_solution=candidate))
+        attempts.append(AttemptRecord(
+            attempt=attempt_num, passed=False,
+            ivy_output=result.raw_output, llm_solution=candidate,
+            reasoning=reply.reasoning, usage=reply.usage,
+        ))
 
     log.info("  [%s] FAILED after %d attempts", problem.name, config.max_attempts)
     return ProblemResult(

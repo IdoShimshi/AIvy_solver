@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -10,6 +11,8 @@ class AttemptRecord:
     passed: bool
     ivy_output: str
     llm_solution: str
+    reasoning: str | None = None
+    usage: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

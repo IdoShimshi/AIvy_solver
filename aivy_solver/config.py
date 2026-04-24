@@ -10,6 +10,7 @@ class Config:
     model: str = "openrouter/google/gemini-2.5-flash-lite"
     max_attempts: int = 5
     temperature: float = 0.0
+    reasoning_effort: str | None = "default"
     ivy_check_timeout: int = 30
     concurrency: int = 1
     ivy_check_command: str = field(

@@ -1,8 +1,21 @@
+import logging
 import re
+from dataclasses import dataclass, field
+from typing import Any
 
+import litellm
 from litellm import acompletion
 
 from aivy_solver.config import Config
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class LLMResponse:
+    content: str
+    reasoning: str | None = None
+    usage: dict[str, Any] = field(default_factory=dict)
 
 
 def extract_ivy_code(reply: str) -> str:
@@ -27,10 +40,22 @@ def extract_ivy_code(reply: str) -> str:
 async def llm_complete(
     messages: list[dict[str, str]],
     config: Config,
-) -> str:
+) -> LLMResponse:
     response = await acompletion(
         model=config.model,
         messages=messages,
         temperature=config.temperature,
+        reasoning_effort=config.reasoning_effort,
+        allowed_openai_params=["reasoning_effort"],
     )
-    return response.choices[0].message.content or ""
+
+    message = response.choices[0].message
+    content = message.content or ""
+    reasoning = getattr(message, "reasoning_content", None)
+
+
+    return LLMResponse(
+        content=content,
+        reasoning=reasoning,
+        usage=response.usage.model_dump(),
+    )

@@ -37,6 +37,12 @@ def _build_parser(defaults: Config) -> argparse.ArgumentParser:
     p.add_argument("--model", default=defaults.model, help=f"LLM model in litellm format (default: {defaults.model})")
     p.add_argument("--max-attempts", type=int, default=defaults.max_attempts, help=f"Max retries per problem (default: {defaults.max_attempts})")
     p.add_argument("--temperature", type=float, default=defaults.temperature, help=f"LLM sampling temperature (default: {defaults.temperature})")
+    p.add_argument(
+        "--reasoning-effort",
+        choices=["none", "minimal", "low", "medium", "default", "high", "xhigh"],
+        default=defaults.reasoning_effort,
+        help="Reasoning effort for reasoning-capable models. Not all models support all levels (default: provider default)",
+    )
     p.add_argument("--results-dir", default=str(defaults.results_dir), help=f"Directory to save results (default: {defaults.results_dir})")
     p.add_argument("--ivy-check-command", default=defaults.ivy_check_command, help=f"Path to ivy_check binary (default: {defaults.ivy_check_command})")
     p.add_argument("--ivy-check-timeout", type=int, default=defaults.ivy_check_timeout, help=f"Timeout in seconds for ivy_check (default: {defaults.ivy_check_timeout})")
@@ -61,6 +67,7 @@ def main() -> None:
         model=args.model,
         max_attempts=args.max_attempts,
         temperature=args.temperature,
+        reasoning_effort=args.reasoning_effort,
         results_dir=Path(args.results_dir),
         ivy_check_command=args.ivy_check_command,
         ivy_check_timeout=args.ivy_check_timeout,
