@@ -158,7 +158,7 @@ async def run_benchmark(problems: list[Problem], config: Config) -> RunResult:
         len(problems), config.model, config.max_attempts, concurrency,
     )
 
-    run = RunResult(model=config.model)
+    run = RunResult(model=config.model, reasoning_effort=config.reasoning_effort)
 
     aivy_logger = logging.getLogger("aivy_solver")
     use_progress_bar = (

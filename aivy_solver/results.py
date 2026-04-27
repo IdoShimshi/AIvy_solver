@@ -29,6 +29,7 @@ class ProblemResult:
 @dataclass
 class RunResult:
     model: str
+    reasoning_effort: str | None = None
     problems: list[ProblemResult] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
