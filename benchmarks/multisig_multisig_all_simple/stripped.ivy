@@ -1,0 +1,93 @@
+#lang ivy1.7
+
+# Source: The Extended UTXO Model https://fc20.ifca.ai/wtsc/WTSC2020/WTSC20_paper_25.pdf
+
+
+type destination
+type value
+type deadline
+type signature
+
+relation holding
+relation collect(K:destination, V:value, D:deadline)
+
+relation sig(K:destination, V:value, D:deadline, S:signature)
+relation sig_auth(S:signature)
+
+relation proposed(K:destination, V:value, D:deadline)
+relation paid(K:destination, V:value, D:deadline)
+relation cancelled(K:destination, V:value, D:deadline)
+
+relation expired(D:deadline)
+
+after init  {
+	holding := true;
+	collect(K, V, D) := false;
+	
+	proposed(K, V, D) := false;
+	paid(K, V, D) := false;
+	cancelled(K, V, D) := false;
+
+	sig(K, V, D, S) := false;
+}
+
+action propose(k:destination, v:value, d:deadline) = {
+    require holding;
+    require ~collect(k, v, d);
+    require ~paid(k, v, d);
+    
+    holding := false;
+    collect(k, v, d) := true;
+    sig(k, v, d, S) := false;
+    proposed(k, v, d) := true;
+}
+
+action add_sig(k:destination, v:value, d:deadline, s:signature) = {
+	require collect(k, v, d);
+    require ~expired(d);
+    require sig_auth(s);
+    
+    sig(k, v, d, s) := true;
+}
+
+action pay(k:destination, v:value, d:deadline) = {
+	require collect(k, v, d);
+	require ~expired(d);
+	require forall S. sig(k, v, d, S);
+	
+	paid(k, v, d) := true;
+    holding := true;
+    collect(k, v, d) := false;
+}
+
+action cancel(k:destination, v:value, d:deadline) = {
+	require collect(k, v, d);
+	require expired(d);
+
+	cancelled(k, v, d) := true;
+    holding := true;
+    collect(k, v, d) := false;
+}
+
+action expire(d:deadline) = {
+	
+    expired(d) := true;
+}
+
+
+export propose
+export add_sig
+export pay
+export cancel
+export expire
+
+# safety property:
+
+# we can only cancel after the deadline
+invariant [safety_1] cancelled(K, V, D) -> expired(D)
+
+# we can only make a payment if we have enough signatures and the signatures are valid
+invariant [safety_2] paid(K, V, D) -> (forall S. sig(K, V, D, S) & sig_auth(S))
+
+# if the payment is made then the recipient is one proposed in the proposal
+invariant [safety_3] paid(K, V, D) -> proposed(K, V, D)
