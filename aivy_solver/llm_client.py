@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-import litellm
 from litellm import acompletion
 
 from aivy_solver.config import Config
@@ -18,7 +17,7 @@ class LLMResponse:
     usage: dict[str, Any] = field(default_factory=dict)
 
 
-def extract_ivy_code(reply: str) -> str:
+def extract_invariants(reply: str) -> str:
     for tag in ("```ivy", "```"):
         start = reply.find(tag)
         if start != -1:
@@ -30,9 +29,6 @@ def extract_ivy_code(reply: str) -> str:
     answer_match = re.search(r"<answer>(.*?)</answer>", reply, re.DOTALL)
     if answer_match:
         return answer_match.group(1).strip()
-
-    if reply.strip().startswith("#lang ivy"):
-        return reply.strip()
 
     return reply.strip()
 

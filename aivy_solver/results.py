@@ -11,6 +11,7 @@ class AttemptRecord:
     passed: bool
     ivy_output: str
     llm_solution: str
+    added_invariants: str = ""
     reasoning: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
 

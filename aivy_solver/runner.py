@@ -1,55 +1,25 @@
 import asyncio
 import logging
-import re
 
 from tqdm import tqdm
 
 from aivy_solver.config import Config
 from aivy_solver.ivy_checker import check_ivy
-from aivy_solver.llm_client import llm_complete, extract_ivy_code
+from aivy_solver.llm_client import llm_complete, extract_invariants
 from aivy_solver.problem import Problem
 from aivy_solver.prompts import (
     SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
     RETRY_PROMPT_TEMPLATE,
     EMPTY_RESPONSE_FEEDBACK,
-    MODIFIED_LINES_FEEDBACK,
 )
 from aivy_solver.results import AttemptRecord, ProblemResult, RunResult
 
 log = logging.getLogger(__name__)
 
 
-def _normalize(line: str) -> str:
-    return re.sub(r"\s+", " ", line.strip())
-
-
-def _check_no_cheating(original: str, candidate: str) -> bool:
-    orig_lines = [
-        _normalize(l) for l in original.splitlines()
-        if l.strip() and not l.strip().startswith("invariant")
-    ]
-    cand_lines = [
-        _normalize(l) for l in candidate.splitlines()
-        if l.strip() and not l.strip().startswith("invariant")
-    ]
-
-    if orig_lines == cand_lines:
-        return False
-
-    orig_idx = 0
-    for cand_line in cand_lines:
-        if orig_idx < len(orig_lines) and cand_line == orig_lines[orig_idx]:
-            orig_idx += 1
-    if orig_idx == len(orig_lines):
-        return False
-
-    for i, (o, c) in enumerate(zip(orig_lines, cand_lines)):
-        if o != c:
-            log.debug("  first diff at non-invariant line %d:\n    orig: %s\n    cand: %s", i, o, c)
-            break
-
-    return True
+def _assemble_program(stripped: str, added_invariants: str) -> str:
+    return stripped + "\n"+ added_invariants + "\n"
 
 
 async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
@@ -65,6 +35,7 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
         attempts.append(AttemptRecord(
             attempt=0, passed=True,
             ivy_output=baseline.raw_output, llm_solution=problem.stripped,
+            added_invariants="",
         ))
         return ProblemResult(
             problem_name=problem.name,
@@ -88,28 +59,20 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
 
         reply = await llm_complete(messages, config)
         raw_reply = reply.content
-        candidate = extract_ivy_code(raw_reply)
+        added_invariants = extract_invariants(raw_reply)
 
-        if not candidate or not candidate.strip():
+        if not added_invariants.strip():
             messages.append({"role": "assistant", "content": raw_reply})
             messages.append({"role": "user", "content": EMPTY_RESPONSE_FEEDBACK})
             attempts.append(AttemptRecord(
                 attempt=attempt_num, passed=False,
-                ivy_output="empty response", llm_solution="",
+                ivy_output="empty response",
+                llm_solution="", added_invariants="",
                 reasoning=reply.reasoning, usage=reply.usage,
             ))
             continue
 
-        if _check_no_cheating(problem.stripped, candidate):
-            messages.append({"role": "assistant", "content": raw_reply})
-            messages.append({"role": "user", "content": MODIFIED_LINES_FEEDBACK})
-            attempts.append(AttemptRecord(
-                attempt=attempt_num, passed=False,
-                ivy_output=MODIFIED_LINES_FEEDBACK, llm_solution=candidate,
-                reasoning=reply.reasoning, usage=reply.usage,
-            ))
-            log.info("  [%s] attempt %d: modified existing lines", problem.name, attempt_num)
-            continue
+        candidate = _assemble_program(problem.stripped, added_invariants)
 
         result = await check_ivy(candidate, ivy_check_cmd=config.ivy_check_command, timeout=config.ivy_check_timeout)
 
@@ -118,6 +81,7 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
             attempts.append(AttemptRecord(
                 attempt=attempt_num, passed=True,
                 ivy_output=result.raw_output, llm_solution=candidate,
+                added_invariants=added_invariants,
                 reasoning=reply.reasoning, usage=reply.usage,
             ))
             log.info("  [%s] PASSED on attempt %d", problem.name, attempt_num)
@@ -137,6 +101,7 @@ async def solve_problem(problem: Problem, config: Config) -> ProblemResult:
         attempts.append(AttemptRecord(
             attempt=attempt_num, passed=False,
             ivy_output=result.raw_output, llm_solution=candidate,
+            added_invariants=added_invariants,
             reasoning=reply.reasoning, usage=reply.usage,
         ))
 

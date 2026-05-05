@@ -1,15 +1,13 @@
-IVY_KNOWLEDGE = """\
-# Ivy Language Reference (for invariant synthesis)
+IVY_KNOWLEDGE = """# Ivy Language Reference (for invariant synthesis)
 
 ## What Ivy Is
-Ivy is a language for specifying and verifying protocols. Programs model \
-transition systems: types define the state space, relations/functions hold \
-state, actions are transitions, and `invariant` lines state properties that \
-must hold at all times. Verification is done by `ivy_check`, which proves \
-invariants are inductive using the Z3 SMT solver.
+Ivy is a language for specifying and verifying protocols. Programs model transition systems: types define the state space, relations/functions hold state, actions are transitions, and `invariant` lines state properties that must hold at all times. Verification is done by `ivy_check`, which proves invariants are inductive using the Z3 SMT solver.
+
+Ivy actions are atomic. Each exported action runs as one isolated transition. Concurrent behavior is modeled by the environment choosing exported actions in some order.
 
 ## File Structure
-```
+
+```ivy
 #lang ivy1.7
 type node                           # uninterpreted type
 relation link(X:node, Y:node)      # mutable boolean function (state)
@@ -22,6 +20,7 @@ invariant FORMULA                   # must hold after init and after every expor
 ```
 
 ## Key Syntax
+
 - `type t` — uninterpreted sort (could be any nonempty set)
 - `type color = {red, green, blue}` — enumerated type
 - `relation r(X:t, Y:t)` — boolean function on tuples (mutable state)
@@ -31,7 +30,8 @@ invariant FORMULA                   # must hold after init and after every expor
 - Lowercase letters (x, y, n) are program variables / parameters
 
 ## Initialization
-```
+
+```ivy
 after init {
     relation_name(X, Y) := false;    # simultaneous: all tuples set to false
     some_var := 0
@@ -39,45 +39,143 @@ after init {
 ```
 
 ## Actions
-```
+
+```ivy
 action send(src: node, dst: node) = {
-    require has_lock(src);          # precondition (caller responsible)
-    assume has_lock(src);           # like require but no blame
-    message(src, dst) := true;      # assignment
-    has_lock(src) := false
+    require has_lock(src);          # Caller may only call send when src holds the lock.
+    message(src, dst) := true;      # State update: record that a message from src to dst has been sent.
+    has_lock(src) := false          # State update: src gives up the lock after sending.
 }
 ```
-- `require P` / `assume P` — guard/precondition
+
+- `require P` — precondition; the caller must establish it
+- `ensure P` — postcondition; the action must establish it
+- `assert P` — proof obligation; Ivy must prove it
 - `:=` — assignment; `x := *` — nondeterministic
 - `f(x, Y) := false` — simultaneous: sets f(x,y) to false for ALL y
 - Semicolon `;` is sequential composition, not a terminator
 
+Actions are checked as isolated transitions. Ivy checks what can happen before and after each exported action. It does not reason about another action interrupting the middle of the current action.
+
+## Modules
+
+A module is a reusable template. It can contain types, relations, functions, actions, invariants, and other declarations.
+
+```ivy
+module counter(t) = {
+    individual value : t
+
+    after init {
+        value := 0
+    }
+
+    action inc = {
+        value := value + 1
+    }
+
+    action get returns (v:t) = {
+        v := value
+    }
+}
+```
+
+A module is used with `instance`.
+
+```ivy
+type num
+interpret num -> int
+
+instance c : counter(num)
+
+export c.inc
+export c.get
+```
+
+This creates one counter named `c`. Its state is `c.value`. Its actions are `c.inc` and `c.get`.
+
+Modules are useful when the same pattern appears more than once. They also make examples easier to split into small parts.
+
+Parameterized instances create one object per value.
+
+```ivy
+type node
+instance local_counter(N:node) : counter(num)
+```
+
+Now each node has its own counter:
+
+```ivy
+local_counter(n).inc
+local_counter(n).get
+```
+
+## Trusted Isolates
+A `trusted isolate` is a component Ivy assumes is correct. Ivy uses its `ensure` facts, but does not prove them.
+
+```ivy
+trusted isolate ns = {
+    action add(n:node, s:nodeset) returns (res:nodeset) = {
+        ensure member(n,res)
+    }
+}
+```
+
+When proving invariants, treat it as a black box. Use only the facts it promises.
+
 ## Logic & Expressions
+
 - `&` (and), `|` (or), `~` (not), `->` (implies), `<->` (iff)
 - `=`, `~=` (not equal), `<`, `<=`, `>`, `>=`
 - `forall X:t. P(X)`, `exists X:t. P(X)`
-- In invariants, free capital-letter variables are implicitly universally quantified
+- In invariants, free capital-letter variables are implicitly universally quantified. For example:
+
+    ```ivy
+    invariant message(X, Y) -> has_lock(X)
+    ```
+
+    is equivalent to:
+
+    ```ivy
+    invariant forall X:node, Y:node. message(X, Y) -> has_lock(X)
+    ```
+
+## Axioms
+
+An `axiom` is a fact Ivy accepts without proof.
+
+```ivy
+axiom forall S1:nodeset, S2:nodeset.
+    majority(S1) & majority(S2) -> exists N. member(N,S1) & member(N,S2)
+```
+
+Axioms are useful for abstract facts, like quorum intersection.
+
+They are also dangerous. If axioms are inconsistent, Ivy may prove incorrect things. Never use axioms yourself.
 
 ## Invariants
-```
+
+```ivy
 invariant holds_lock(N1) & holds_lock(N2) -> N1 = N2
 ```
+
 An invariant must be **inductive**:
+
 1. **Initiation**: true in all initial states
 2. **Consecution**: if true before any exported action, still true after
 
-A property that is true but not inductive must be **strengthened** with \
-supporting invariants. Example:
+A property that is true but not inductive must be **strengthened** with supporting invariants. Example:
+
 - Safety: `invariant holds_lock(X) & holds_lock(Y) -> X = Y`
 - Supporting: `invariant ~(holds_lock(X) & message(Y,Z))`
 - Supporting: `invariant ~message(X,Y) | ~message(Z,W) | X = Z`
 
-Together they form an inductive set: each is preserved by every action \
-given the conjunction of all invariants.
+Together they form an inductive set: each is preserved by every action given the conjunction of all invariants.
 
 ## ivy_check Output
+
 ivy_check tests each invariant against initialization and each exported action.
-```
+
+```text
 Initialization must establish the invariant
     file.ivy: line 30: invar1 ... PASS
 The following set of external actions must preserve the invariant:
@@ -86,12 +184,12 @@ The following set of external actions must preserve the invariant:
     ext:recv
         file.ivy: line 30: invar1 ... FAIL
 ```
+
 FAIL means the invariant is not preserved by that action.
 
-When a check fails, ivy_check prints a **counterexample trace** — a concrete \
-execution that starts in a state satisfying all current invariants and reaches \
-a state where one is violated. Example:
-```
+When a check fails, ivy_check prints a **counterexample trace** — a concrete execution that starts in a state satisfying all current invariants and reaches a state where one is violated. Example:
+
+```text
     ext:recv
         file.ivy: line 42: invar3 ... FAIL
 file.ivy: line 18: message(n0,n1) = true
@@ -101,44 +199,42 @@ file.ivy: line 19: has_lock(n1) = false
 ...
 [after recv] has_lock(n1) = true, has_lock(n0) = true  <-- violates invar3
 ```
+
 This trace tells you:
+
 1. **Which action** caused the failure (recv)
 2. **Which invariant** failed (invar3, at line 42)
 3. **The pre-state** values of relations/functions that led to the violation
 4. **The post-state** showing the violation
 
 Use the trace to understand WHY the invariant broke:
+
 - Look at what the action did in that specific state
-- Identify what additional fact about the pre-state would have prevented \
-  this scenario
+- Identify what additional fact about the pre-state would have prevented this scenario
 - Add that fact as a new supporting invariant
 
 ## Decidable Fragment (EPR/FAU)
-ivy_check works reliably when verification conditions are in the decidable \
-fragment. Key rules:
+
+ivy_check works reliably when verification conditions are in the decidable fragment. Key rules:
+
 - **Prefer relations over functions** (relations are EPR-friendly)
-- **Avoid arithmetic on universally quantified variables** (X+1, X-Y are \
-  outside the fragment)
-- **Avoid function cycles** (f:t→u and g:u→t create undecidable cycles)
+- **Avoid arithmetic on universally quantified variables** (X+1, X-Y are outside the fragment)
+- **Avoid function cycles** (f:t->u and g:u->t create undecidable cycles)
 - Quantifier alternations (forall-exists over same type) can be problematic
-- Keep invariants as **quantifier-free** or **universally quantified** \
-  formulas when possible
+- Keep invariants as **quantifier-free** or **universally quantified** formulas when possible
 
 ## Strategies for Finding Invariants
-1. **Think inductively**: what must be true so that each action preserves \
-   the safety property?
-2. **Mutual exclusion**: if only one thing can be true at a time, state it \
-   (`~(A & B)`)
-3. **Message invariants**: if messages exist, relate message contents to \
-   sender state at send time
+
+1. **Think inductively**: what must be true so that each action preserves the safety property?
+2. **Mutual exclusion**: if only one thing can be true at a time, state it (`~(A & B)`)
+3. **Message invariants**: if messages exist, relate message contents to sender state at send time
 4. **Monotonicity**: once a fact becomes true/false, it stays that way
-5. **Quorum intersection**: for consensus protocols, preserve the link \
-   between decisions and quorum votes
-6. **Strengthening**: if ivy_check shows action A breaks invariant I, think \
-   about what additional fact would prevent that specific scenario
+5. **Quorum intersection**: for consensus protocols, preserve the link between decisions and quorum votes
+6. **Strengthening**: if ivy_check shows action A breaks invariant I, think about what additional fact would prevent that specific scenario
 
 ## Complete Example: Lock Server
-```
+
+```ivy
 #lang ivy1.7
 type node
 relation lock_msg(N:node)
@@ -197,26 +293,29 @@ invariant ~(grant_msg(N) & server_holds_lock)
 invariant ~(holds_lock(N) & server_holds_lock)
 invariant ~(unlock_msg(N) & server_holds_lock)
 ```
-The key insight: the lock token exists in exactly one form at a time \
-(server_holds_lock, grant_msg, holds_lock, or unlock_msg), and each form \
-is unique. The supporting invariants encode all pairwise mutual exclusions."""
+
+The key insight: the lock token exists in exactly one form at a time (server_holds_lock, grant_msg, holds_lock, or unlock_msg), and each form is unique. The supporting invariants encode all pairwise mutual exclusions.
+"""
 
 SYSTEM_PROMPT = f"""\
 You are an expert in the Ivy verification language. Your task is to add \
 inductive invariants to Ivy programs so that ivy_check verifies them.
 
 CRITICAL OUTPUT FORMAT RULES — you MUST follow ALL of these:
-1. Your response must contain ONLY a complete Ivy program. \
-No English text, no explanations, no reasoning, no markdown — ONLY Ivy code.
-2. The program you return must start with `#lang ivy1.7` and include \
-EVERY line from the original program, unchanged, plus your new invariants.
-3. Do NOT output just the invariants — output the ENTIRE program.
-4. Do NOT explain your thinking — just output code.
-5. Do NOT modify any existing lines (types, relations, actions, axioms, \
-init blocks, exports, or the safety invariant).
-6. You may only ADD new `invariant` lines that strengthen the inductive \
-hypothesis so ivy_check can prove the safety property.
-7. Place new invariants at the end of the program, after the existing invariant.
+1. Output ONLY new `invariant` lines that should be appended to the program. \
+Nothing else. No prose, no explanations, no reasoning, no markdown fences, \
+no comments, no `#lang` line, no types, relations, actions, axioms or any \
+other Ivy declarations — ONLY `invariant ...` lines.
+2. Each line in your response must start with the keyword `invariant`. \
+Do not include blank lines between invariants. Do not add a leading or \
+trailing message.
+3. On every turn, output the COMPLETE set of invariants you want appended \
+to the program. The system replaces (not merges) your previous answer with \
+your latest one, so anything you omit will be lost. If on a previous turn \
+you had two invariants that you still want, repeat them in full alongside \
+any new ones.
+4. Do NOT attempt to modify, repeat, or reference any existing line of the \
+program. The original program is fixed; you only contribute new invariants.
 
 ---
 
@@ -228,10 +327,10 @@ USER_PROMPT_TEMPLATE = """\
 The following Ivy program has a safety property (marked as `invariant`) \
 that ivy_check cannot prove on its own because supporting invariants are missing.
 
-Add the necessary `invariant` lines so that ivy_check verifies the program.
+Your job is to come up with a set of `invariant` lines that, when appended \
+to the end of the program, make ivy_check succeed.
 
-Respond with ONLY the complete Ivy program — all original lines unchanged, \
-plus your new invariants at the end. No explanations.
+Respond with ONLY the new `invariant` lines — one per line, nothing else.
 
 Program:
 {stripped_program}
@@ -243,25 +342,24 @@ to the violation:
 {ivy_output}"""
 
 RETRY_PROMPT_TEMPLATE = """\
-Your previous solution did not pass ivy_check. Here is the full output:
+Your previous set of invariants did not pass ivy_check. Here is the full output:
 
 {error_output}
 
-Fix your invariants and respond with ONLY the complete Ivy program. \
-No explanations — just the full program starting with #lang ivy1.7."""
+Use the counterexample to understand which state and action lead to the \
+failure and what additional fact about the pre-state would have prevented it.
+
+Reply with the COMPLETE updated set of invariants you want appended to the \
+program (not just changes — anything you omit will be dropped). Output ONLY \
+`invariant` lines, one per line. No prose, no comments, no fences."""
 
 TIMEOUT_FEEDBACK = """\
 ivy_check timed out. Your invariants may be too complex or outside the \
 decidable fragment. Try simpler, quantifier-free invariants. \
-Respond with ONLY the complete Ivy program starting with #lang ivy1.7."""
+Reply with the complete updated set of `invariant` lines you want appended \
+to the program. Output ONLY `invariant` lines — no prose, no comments, no fences."""
 
 EMPTY_RESPONSE_FEEDBACK = """\
-Your response was empty or contained no Ivy code. \
-Respond with ONLY the complete Ivy program starting with #lang ivy1.7, \
-including all original lines plus your new invariants."""
-
-MODIFIED_LINES_FEEDBACK = """\
-You modified existing lines of the program. \
-Only new `invariant` lines may be added — all original lines must stay untouched. \
-Respond with ONLY the complete Ivy program starting with #lang ivy1.7, \
-with the original lines exactly preserved and only new invariants appended."""
+Your response was empty or contained no `invariant` lines. \
+Reply with the complete set of `invariant` lines you want appended to the \
+program — one per line, nothing else."""
