@@ -302,13 +302,16 @@ You are an expert in the Ivy verification language. Your task is to add \
 inductive invariants to Ivy programs so that ivy_check verifies them.
 
 CRITICAL OUTPUT FORMAT RULES — you MUST follow ALL of these:
-1. Output ONLY new `invariant` lines that should be appended to the program. \
-Nothing else. No prose, no explanations, no reasoning, no markdown fences, \
-no comments, no `#lang` line, no types, relations, actions, axioms or any \
-other Ivy declarations — ONLY `invariant ...` lines.
-2. Each line in your response must start with the keyword `invariant`. \
-Do not include blank lines between invariants. Do not add a leading or \
-trailing message.
+1. Output ONLY new `invariant` declarations that should be appended to the \
+program. Nothing else. No prose, no explanations, no reasoning, no markdown \
+fences, no comments, no `#lang` line, no `relation`, `function`, `type`, \
+`definition`, `property`, `axiom`, `action`, `module`, or any other Ivy \
+declaration — ONLY `invariant ...` declarations.
+2. Each invariant declaration starts with the keyword `invariant`. \
+A single invariant MAY span multiple lines (e.g. to break up long quantifier \
+prefixes or large conjunctions); just make sure the next `invariant` keyword \
+is what begins the next declaration. Whatever you output will be appended \
+verbatim to the end of the program, so it must parse as valid Ivy.
 3. On every turn, output the COMPLETE set of invariants you want appended \
 to the program. The system replaces (not merges) your previous answer with \
 your latest one, so anything you omit will be lost. If on a previous turn \
@@ -327,10 +330,11 @@ USER_PROMPT_TEMPLATE = """\
 The following Ivy program has a safety property (marked as `invariant`) \
 that ivy_check cannot prove on its own because supporting invariants are missing.
 
-Your job is to come up with a set of `invariant` lines that, when appended \
-to the end of the program, make ivy_check succeed.
+Your job is to come up with a set of `invariant` declarations that, when \
+appended to the end of the program, make ivy_check succeed.
 
-Respond with ONLY the new `invariant` lines — one per line, nothing else.
+Respond with ONLY the new `invariant` declarations — nothing else. A single \
+invariant may span multiple lines if that helps readability.
 
 Program:
 {stripped_program}
@@ -351,15 +355,16 @@ failure and what additional fact about the pre-state would have prevented it.
 
 Reply with the COMPLETE updated set of invariants you want appended to the \
 program (not just changes — anything you omit will be dropped). Output ONLY \
-`invariant` lines, one per line. No prose, no comments, no fences."""
+`invariant` declarations. No prose, no comments, no fences."""
 
 TIMEOUT_FEEDBACK = """\
 ivy_check timed out. Your invariants may be too complex or outside the \
 decidable fragment. Try simpler, quantifier-free invariants. \
-Reply with the complete updated set of `invariant` lines you want appended \
-to the program. Output ONLY `invariant` lines — no prose, no comments, no fences."""
+Reply with the complete updated set of `invariant` declarations you want \
+appended to the program. Output ONLY `invariant` declarations — no prose, \
+no comments, no fences."""
 
 EMPTY_RESPONSE_FEEDBACK = """\
-Your response was empty or contained no `invariant` lines. \
-Reply with the complete set of `invariant` lines you want appended to the \
-program — one per line, nothing else."""
+Your response was empty or contained no Ivy code. \
+Reply with the complete set of `invariant` declarations you want appended \
+to the program — nothing else."""
