@@ -1,8 +1,7 @@
-results/
 __pycache__/
 *.egg-info/
 .venv/
 *.pyc
 .env
 DafnyBench_original/
-problems/
+temp/
