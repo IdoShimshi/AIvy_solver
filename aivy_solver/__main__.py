@@ -86,16 +86,31 @@ def main() -> None:
     run_result = asyncio.run(run_benchmark(problems, config))
     out_path = run_result.save(config.results_dir)
 
-    for pr in run_result.problems:
-        if pr.success:
-            print(f"\n[{pr.problem_name}] PASSED on attempt {pr.success_on_attempt}")
-        else:
-            print(f"\n[{pr.problem_name}] FAILED after {pr.total_attempts} attempts")
-
+    total = len(run_result.problems)
     n_passed = sum(1 for p in run_result.problems if p.success)
+    n_crashed = sum(1 for p in run_result.problems if _is_crashed(p))
+    n_failed = total - n_passed - n_crashed
+
     print(f"\nResults saved to {out_path}")
-    if len(run_result.problems) > 1:
-        print(f"Success rate: {run_result.success_rate:.0%} ({n_passed}/{len(run_result.problems)})")
+    if total == 1:
+        pr = run_result.problems[0]
+        if pr.success:
+            print(f"[{pr.problem_name}] PASSED on attempt {pr.success_on_attempt}")
+        elif _is_crashed(pr):
+            print(f"[{pr.problem_name}] CRASHED ({pr.attempts[0].ivy_output})")
+        else:
+            print(f"[{pr.problem_name}] FAILED after {pr.total_attempts} attempts")
+    else:
+        print(f"Success rate: {run_result.success_rate:.0%} ({n_passed}/{total})")
+        print(f"  passed:  {n_passed}")
+        print(f"  failed:  {n_failed}")
+        print(f"  crashed: {n_crashed}")
+
+
+def _is_crashed(problem_result) -> bool:
+    if problem_result.success or not problem_result.attempts:
+        return False
+    return (problem_result.attempts[0].ivy_output or "").startswith("crashed:")
 
 
 if __name__ == "__main__":
