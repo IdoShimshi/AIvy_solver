@@ -1,6 +1,6 @@
 """Convert ivybench Ivy files into the benchmarks/ stripped+ground_truth format.
 
-Walks ``temp/problems/ivybench/<category>/ivy/*.ivy`` and produces
+Walks `ivybench/<category>/ivy/*.ivy`` and produces
 ``benchmarks/<name>/{stripped.ivy, ground_truth.ivy}``.
 
 For each source file we extract every top-level ``invariant`` / ``conjecture``
@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SOURCE = REPO_ROOT / "temp" / "problems" / "ivybench"
+DEFAULT_SOURCE = REPO_ROOT / "benchmark_base" / "problems" / "ivybench"
 DEFAULT_OUTPUT = REPO_ROOT / "benchmarks"
 
 INVARIANT_LINE_RE = re.compile(
