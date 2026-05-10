@@ -6,6 +6,8 @@ Given an Ivy program with a safety property but missing supporting invariants, A
 
 ## Setup
 
+Requires Python 3.10+.
+
 ```bash
 pip install -e .
 ```
@@ -46,44 +48,59 @@ The binary is resolved in this order:
 
 ```bash
 # Solve a single problem
-python -m aivy_solver benchmarks/toy_consensus
+python -m aivy_solver benchmarks/ex_toy_consensus
 
 # Run all problems in a directory
 python -m aivy_solver benchmarks/
 
-# Specify a model
-python -m aivy_solver --model openai/gpt-4o benchmarks/toy_consensus
+# Pick a model (any litellm-compatible string)
+python -m aivy_solver --model openrouter/anthropic/claude-sonnet-4 benchmarks/ex_toy_consensus
+
+# Control reasoning effort on reasoning-capable models
+python -m aivy_solver --model openai/o3 --reasoning-effort high benchmarks/ex_toy_consensus
 
 # Run multiple problems in parallel (e.g. 4 at a time)
 python -m aivy_solver -j 4 benchmarks/
 ```
 
-Run `python -m aivy_solver --help` for all options (model, max attempts, temperature, timeout, etc.).
+Run `python -m aivy_solver --help` for all options (model, max attempts, temperature, reasoning effort, timeout, concurrency, etc.).
 
 ## How It Works
 
-1. Loads `stripped.ivy` — the program with the safety property but without supporting invariants
-2. Sends it to the LLM with a prompt explaining the task
-3. Extracts Ivy code from the response
-4. Verifies no existing lines were modified (only new `invariant` lines are allowed)
-5. Runs `ivy_check` on the candidate solution
-6. If all checks pass — done
-7. If any check fails — feeds the `ivy_check` output back to the LLM and retries (up to N attempts)
-8. Saves results as JSON
+1. Load `stripped.ivy` — the program with the safety property but no supporting invariants.
+2. Run `ivy_check` on the stripped program first. If it already verifies, mark the problem as passed on attempt 0 (no LLM call).
+3. Otherwise, send the stripped program plus the `ivy_check` output to the LLM, asking it to propose supporting invariants.
+4. Extract the invariants from the model's reply (from a code block or `<answer>` tags).
+5. Append them to the stripped program and run `ivy_check` again.
+6. If all checks pass — done.
+7. If any check fails — feed the `ivy_check` output back to the LLM and retry, up to N attempts.
+8. Save results as JSON.
 
 ## Benchmarks
 
 Each benchmark is a directory under `benchmarks/<name>/` with two files:
 
-- **`ground_truth.ivy`** — the complete program with all invariants (reference solution)
-- **`stripped.ivy`** — the program with supporting invariants removed (the LLM's input)
+- **`ground_truth.ivy`** — the complete program with all invariants (reference solution).
+- **`stripped.ivy`** — the program with supporting invariants removed (the LLM's input).
 
-| Problem | Description | Invariants to find |
-|---------|-------------|-------------------|
-| `toy_consensus` | Quorum-based consensus | 2 |
-| `decentralized_lock` | Decentralized lock passing | 3 |
-| `lockserv` | Lock server protocol | 8 |
+Benchmarks are grouped by source — directory prefixes indicate origin:
+
+| Prefix | Source |
+|--------|--------|
+| `ex_` | Ivy distribution examples |
+| `i4_` | I4 invariant inference benchmarks |
+| `mypyv_` | mypyvy benchmarks |
+| `paxos_` | Paxos / consensus protocols |
+| `tla_` | TLA+ examples ported to Ivy |
+| `multisig_` | Multisig protocols |
+| `distai_` | DistAI benchmarks |
+
+Run `ls benchmarks/` to see the full list.
 
 ## Results
 
-Results are saved as JSON to `results/` with per-attempt details (ivy_check output, LLM solution) and final success/failure status.
+Results are saved as JSON to `results/<model>_<timestamp>.json` and include, per run:
+
+- The model and reasoning effort used.
+- Per-problem success/failure and the attempt the solution was found on.
+- For each attempt: the candidate invariants, full `ivy_check` output, the model's reasoning trace (if exposed), and token usage.
